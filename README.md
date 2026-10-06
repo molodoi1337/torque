@@ -1,36 +1,106 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ТОРК — сайт автосервиса с онлайн-записью и CRM
 
-## Getting Started
+Полноценный сайт для независимого автосервиса: клиентская часть с калькулятором и онлайн-записью на свободное время, отслеживание статуса ремонта, личный кабинет и админка для мастера-приёмщика.
 
-First, run the development server:
+> Демо-проект для портфолио. Компания, адрес и реквизиты вымышленные.
+
+**Демо-доступ:** на странице `/login` есть кнопки «Администратор» и «Клиент» — вход в один клик.
+Или вручную: `admin@tork.demo` / `demo1234`, `client@tork.demo` / `demo1234`.
+
+## Задача
+
+Автосервис принимал записи по телефону, клиенты постоянно звонили узнать, готова ли машина, а загрузку постов вели в тетради. Нужно было:
+
+- дать клиентам понятные цены и запись онлайн на реально свободное время;
+- убрать звонки «ну что там с машиной» — показывать статус ремонта по ссылке;
+- дать администратору одну панель: заявки, загрузка постов, выручка.
+
+## Что сделано
+
+**Для клиентов**
+- Лендинг с калькулятором стоимости: цена зависит от класса авто (×1 / ×1.25 / ×1.5).
+- Каталог из 26 услуг с фильтрами, поиском и «корзиной» → сразу в запись.
+- Пошаговая онлайн-запись: услуги → авто → дата и **реально свободные слоты** → контакты.
+  Слоты считаются по занятости 4 постов с учётом длительности выбранных работ.
+- Страница статуса `/status/КОД` с таймлайном (принята → подтверждена → в работе → готово → выдано), обновляется сама каждые 30 секунд.
+- Личный кабинет: предстоящие записи с отменой, история визитов, потраченная сумма, автомобили.
+
+**Для администратора** (`/admin`)
+- Дашборд: выручка за 30 дней с динамикой, средний чек, загрузка постов, график выручки, топ услуг.
+- Канбан-доска заказов с drag-and-drop (и кнопками для планшета) — смена статуса сразу видна клиенту.
+- Расписание постов: сетка дня по постам с линией текущего времени.
+- Все записи: поиск по имени, телефону, госномеру, коду; фильтры по дате и статусу; пагинация.
+- Карточка заказа: назначение мастера и поста (с проверкой занятости), заметки, история статусов.
+- Клиентская база с суммой заказов и отметкой VIP.
+- Управление услугами (CRUD в модальном окне) и мастерами.
+- Уведомления о новых записях и отменах в Telegram.
+
+## Стек
+
+| | |
+|---|---|
+| Фреймворк | **Next.js 16** (App Router, Server Components, Server Actions, Proxy), **React 19** |
+| Язык | TypeScript (strict) |
+| Стили | Tailwind CSS 4, собственная дизайн-система, тёмная тема |
+| База данных | SQLite / **Turso** (libSQL) + **Drizzle ORM** |
+| Авторизация | Собственная: JWT-сессии в httpOnly-cookie (`jose`), пароли — `bcrypt`, роли client/admin |
+| Валидация | Zod 4 — все данные проверяются на сервере, цена пересчитывается на сервере |
+| Графики | Recharts |
+| Иконки | Lucide |
+
+**Технические решения, которые стоит отметить:**
+- Цена и длительность заказа **никогда не берутся с клиента** — пересчитываются в server action.
+- Перед созданием записи пост проверяется повторно: если слот заняли, пока клиент заполнял форму, — понятная ошибка и обновлённые слоты.
+- Все даты хранятся во «времени мастерской» (Москва), «сейчас» считается явно через `Intl` — сайт корректно работает на серверах в UTC.
+- Доступ проверяется дважды: оптимистично в `proxy.ts` и строго в каждой странице/действии админки.
+- Оптимистичные обновления на канбане через `useOptimistic`.
+- Открытые редиректы после входа запрещены (`?next=` принимает только внутренние пути).
+
+## Запуск локально
+
+Нужен Node.js 20.9+.
 
 ```bash
+npm install
+npm run db:setup   # создаёт local.db и наполняет демо-данными (~550 записей за 2 месяца)
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Открыть http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Деплой (бесплатно): Vercel + Turso
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **База.** Зарегистрируйтесь на [turso.tech](https://turso.tech), создайте базу и токен:
+   ```bash
+   turso db create tork
+   turso db show tork --url
+   turso db tokens create tork
+   ```
+2. **Схема и демо-данные** в облачную базу:
+   ```bash
+   DATABASE_URL="libsql://…" DATABASE_AUTH_TOKEN="…" npm run db:setup
+   ```
+3. **Код.** Залейте репозиторий на GitHub и импортируйте его на [vercel.com](https://vercel.com/new).
+4. **Переменные окружения** в Vercel (Settings → Environment Variables) — см. `.env.example`:
+   `DATABASE_URL`, `DATABASE_AUTH_TOKEN`, `AUTH_SECRET` (сгенерировать: `openssl rand -base64 32`),
+   по желанию `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID`.
+5. Deploy. Свой домен подключается в Settings → Domains.
 
-## Learn More
+### Уведомления в Telegram
+Создайте бота у [@BotFather](https://t.me/BotFather), напишите ему любое сообщение, затем узнайте `chat_id` через
+`https://api.telegram.org/bot<TOKEN>/getUpdates`. Без этих переменных уведомления просто отключены.
 
-To learn more about Next.js, take a look at the following resources:
+## Структура
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+  app/
+    (site)/          публичная часть: главная, услуги, запись, статус, вход, кабинет
+    admin/           админка: дашборд, доска, расписание, записи, клиенты, услуги
+    actions/         server actions: booking, auth, client, admin
+  components/        общие компоненты
+  db/                схема Drizzle и подключение
+  lib/               доступность слотов, сессии, время, форматирование, Telegram
+  proxy.ts           защита /admin и /account
+scripts/seed.ts      генерация демо-данных
+```
